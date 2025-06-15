@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::io;
 use tokio::{io::AsyncWriteExt, net::ToSocketAddrs};
 
 pub struct Server {
@@ -16,11 +16,11 @@ impl Server {
         loop {
             let (socket, addr) = self.listener.accept().await?;
             log::info!("Accepted connection from {addr}\n");
-            self.handle_conn(socket).await;
+            tokio::spawn(Server::handle_conn(socket));
         }
     }
 
-    async fn handle_conn(&self, mut stream: tokio::net::TcpStream) {
-        stream.write(":3\n".as_bytes()).await.unwrap();
+    async fn handle_conn(mut socket: tokio::net::TcpStream) {
+        socket.write(":3\n".as_bytes()).await.unwrap();
     }
 }
