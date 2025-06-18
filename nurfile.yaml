@@ -1,0 +1,5 @@
+name: nur-test
+language: rust
+build:
+  command: cd examples/hello_world && cargo build --target wasm32-unknown-unknown --release
+  output: examples/hello_world/target/wasm32-unknown-unknown/release/hello_world.wasm
