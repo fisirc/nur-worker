@@ -27,6 +27,10 @@ pub fn build_logger() -> env_logger::Builder {
         writeln!(f, "{} {} {} > {}", time, level, target, record.args(),)
     });
 
+    if std::env::var_os("RUST_LOG").is_none() {
+        builder.filter_level(log::LevelFilter::Info);
+    }
+
     builder.parse_env("RUST_LOG").format_indent(None);
     builder
 }
