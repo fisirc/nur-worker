@@ -1,5 +1,7 @@
-name: nur-worker
-language: rust
-build:
-  command: cd examples/hello_world && cargo build --target wasm32-unknown-unknown --release
-  output: examples/hello_world/target/wasm32-unknown-unknown/release/hello_world.wasm
+functions:
+  - name: nur-worker
+    directory: /examples/hello_world
+    template: rust
+    build:
+      command: cargo build --target wasm32-unknown-unknown --release
+      output: /target/wasm32-unknown-unknown/release/hello_world.wasm
