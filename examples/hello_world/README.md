@@ -26,4 +26,5 @@ wasm2wat target/wasm32-unknown-unknown/release/hello_wasm.wasm
 
 ## Acknowledgements
 
-Rust to WebAsembly the hard way: <https://surma.dev/things/rust-to-webassembly/>
+- Rust to WebAsembly the hard way: <https://surma.dev/things/rust-to-webassembly/>
+- httpparse: <https://crates.io/crates/httparse>
