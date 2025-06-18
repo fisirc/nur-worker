@@ -1,4 +1,4 @@
-name: nur-test
+name: nur-worker
 language: rust
 build:
   command: cd examples/hello_world && cargo build --target wasm32-unknown-unknown --release
