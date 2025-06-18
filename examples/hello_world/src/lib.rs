@@ -1,7 +1,6 @@
 // Define a function that is imported into the module.
 // By default, the "env" namespace is used.
 
-use core::panic;
 #[link(wasm_import_module = "nur")]
 unsafe extern "C" {
     fn nur_log(ptr: *const u8, len: usize);
@@ -31,10 +30,10 @@ fn abort() {
 }
 
 // String accessible within the wasm linear memory
-static RESPONSE: &'static str = "HTTP/1.1 200 OK\r
-Content-Type: application/json
-\nContent-Length: 30
-\n\r
+static RESPONSE: &str = "HTTP/1.1 200 OK\r\n\
+Content-Type: application/json\r\n\
+Content-Length: 27\r\n\
+\r\n\
 {\"msg\": \"Hello world, wa!\"}";
 
 // This will be called by wasmer
@@ -69,8 +68,6 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn alloc(len: usize) -> usize {
-    let layout = std::alloc::Layout::array::<u8>(len.try_into().unwrap()).unwrap();
-    let pointer = unsafe { (std::alloc::alloc(layout) as usize).try_into().unwrap() };
-    send(&format!("Sending shit: {pointer}"));
-    pointer
+    let layout = std::alloc::Layout::array::<u8>(len).unwrap();
+    unsafe { std::alloc::alloc(layout) as usize }
 }
