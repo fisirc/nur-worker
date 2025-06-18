@@ -2,10 +2,11 @@
 
 | Features   |     |
 | ---------- | --- |
+| imports    | no  |
+| parameters | no  |
+| no_std     | no  |
 | wasi       | no  |
 | C bindings | no  |
-| imports    | no  |
-| no_std     | no  |
 
 ## Compiling
 
