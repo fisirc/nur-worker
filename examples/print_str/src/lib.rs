@@ -9,7 +9,7 @@ static HELLO: &'static str = "Hello, World!";
 
 // This will be called by wasmer
 #[unsafe(no_mangle)]
-pub fn hello_wasm() {
+pub fn handle_request() {
     unsafe {
       print_str(HELLO.as_ptr(), HELLO.len());
     }
