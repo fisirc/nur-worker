@@ -5,7 +5,7 @@ unsafe extern "C" {
 }
 
 // String accessible within the wasm linear memory
-static HELLO: &'static str = "Hello, World!";
+static HELLO: &'static str = "Hola mundo desde wasm, wa";
 
 // This will be called by wasmer
 #[unsafe(no_mangle)]
