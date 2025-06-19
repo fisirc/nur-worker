@@ -1,31 +1,32 @@
 // Define a function that is imported into the module.
 // By default, the "env" namespace is used.
 
-#[link(wasm_import_module = "nur")]
-unsafe extern "C" {
-    fn nur_log(ptr: *const u8, len: usize);
-    fn nur_send(ptr: *const u8, len: usize);
-    // TODO: random
-    fn nur_end();
-}
-
-fn log(msg: &str) {
-    unsafe {
-        nur_log(msg.as_ptr(), msg.len());
+mod import {
+    #[link(wasm_import_module = "nur")]
+    unsafe extern "C" {
+        pub fn nur_log(ptr: *const u8, len: usize);
+        pub fn nur_send(ptr: *const u8, len: usize);
+        pub fn nur_end();
     }
 }
 
-fn send(msg: &str) {
+fn nur_log(msg: &str) {
     unsafe {
-        nur_send(msg.as_ptr(), msg.len());
+        import::nur_log(msg.as_ptr(), msg.len());
+    }
+}
+
+fn nur_send(msg: &str) {
+    unsafe {
+        import::nur_send(msg.as_ptr(), msg.len());
     }
 }
 
 // end doesn't really do something special, it just sends the signal to the host to end
 // its lifecycle
-fn end() {
+fn nur_end() {
     unsafe {
-        nur_end();
+        import::nur_end();
     }
 }
 
@@ -52,18 +53,18 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
             }
         }
         Err(e) => {
-            log(&format!("Got invalid request, digo waa: {e}"));
-            log(String::from_utf8_lossy(slice).to_string().as_str());
-            end();
+            nur_log(&format!("Got invalid request, digo waa: {e}"));
+            nur_log(String::from_utf8_lossy(slice).to_string().as_str());
+            nur_end();
             return;
         }
     }
 
-    log("Look, there is a request!\n");
-    log("Let's send them some love\n");
+    nur_log("Look, there is a request!\n");
+    nur_log("Let's send them some love\n");
 
-    send(RESPONSE);
-    end();
+    nur_send(RESPONSE);
+    nur_end();
 }
 
 #[unsafe(no_mangle)]
