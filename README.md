@@ -19,5 +19,5 @@ Nur worker
 Nur workers receive user requets queued by the Nur gateway, download the
 required artifacts and run the WASM code.
 
-The program outputs are sended to the Nur log collector, which makes them
+The program outputs are sent to the Nur log collector, which makes them
 available to the programs' authors.
