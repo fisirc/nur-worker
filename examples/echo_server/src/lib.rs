@@ -41,7 +41,7 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
             return end();
         }
     };
-    let content_len = content.len();
+    let content_len = content.len()
 
     send(
         format!(
