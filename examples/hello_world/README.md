@@ -3,7 +3,6 @@
 | Features   |     |
 | ---------- | --- |
 | imports    | no  |
-| parameters | no  |
 | no_std     | no  |
 | wasi       | no  |
 | C bindings | no  |
