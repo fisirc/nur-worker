@@ -6,7 +6,7 @@ unsafe extern "C" {
     fn nur_log(ptr: *const u8, len: usize);
     fn nur_send(ptr: *const u8, len: usize);
     // TODO: random
-    fn nur_abort();
+    fn nur_end();
 }
 
 fn log(msg: &str) {
@@ -21,11 +21,11 @@ fn send(msg: &str) {
     }
 }
 
-// Abort doesn't really do something special, it just sends the signal to the host to end
+// end doesn't really do something special, it just sends the signal to the host to end
 // its lifecycle
-fn abort() {
+fn end() {
     unsafe {
-        nur_abort();
+        nur_end();
     }
 }
 
@@ -54,7 +54,7 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
         Err(e) => {
             log(&format!("Got invalid request, digo waa: {e}"));
             log(String::from_utf8_lossy(slice).to_string().as_str());
-            abort();
+            end();
             return;
         }
     }
@@ -63,7 +63,7 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
     log("Let's send them some love\n");
 
     send(RESPONSE);
-    abort();
+    end();
 }
 
 #[unsafe(no_mangle)]

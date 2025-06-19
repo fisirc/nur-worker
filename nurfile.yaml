@@ -1,7 +1,14 @@
 functions:
-  - name: nur-worker
-    directory: /examples/hello_world
+  - name: hello-world
+    directory: examples/hello_world
     template: rust
     build:
       command: cargo build --target wasm32-unknown-unknown --release
-      output: /target/wasm32-unknown-unknown/release/hello_world.wasm
+      output: target/wasm32-unknown-unknown/release/hello_world.wasm
+
+  - name: echo-server
+    directory: examples/echo_server
+    template: rust
+    build:
+      command: cargo build --target wasm32-unknown-unknown --release
+      output: target/wasm32-unknown-unknown/release/echo_server.wasm
