@@ -1,4 +1,5 @@
 use aws_config::BehaviorVersion;
+use aws_sdk_s3::config::Credentials;
 use std::{io, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
@@ -7,7 +8,7 @@ use tokio::select;
 use crate::intrinsics;
 use wasmer::{FunctionEnv, Instance, Module, Store, imports};
 
-static WASM: &'static [u8] = include_bytes!("../test.wasm");
+// static WASM: &'static [u8] = include_bytes!("../test.wasm");
 
 const EXPORTED_POLL_HANDLER_SYMBOL_NAME: &str = "poll_stream";
 const EXPORTED_ALLOC_SYMBOL_NAME: &str = "alloc";
@@ -36,24 +37,36 @@ impl Server {
         // TODO fetch from S3
         // TODO unzpip
 
-        let config = aws_config::load_defaults(BehaviorVersion::v2025_01_17()).await;
+        let credentials = Credentials::new("", "", None, None, "from-env");
+
+        let config = aws_config::defaults(BehaviorVersion::v2025_01_17())
+            .region("us-east-2")
+            .credentials_provider(credentials)
+            .load()
+            .await;
+
         let client = aws_sdk_s3::Client::new(&config);
 
         let result = client
             .get_object()
             .bucket("nur-storage")
-            .key("builds/nur-worker.zip")
+            .key("echo_server.wasm.zst")
             .send()
             .await
             .unwrap();
 
-        let bytes = result.body.collect().await.unwrap().into_bytes();
+        let bytes: &[u8] = &result.body.collect().await.unwrap().into_bytes();
+
+        let mut decompression_result = async_compression::tokio::bufread::ZstdDecoder::new(bytes);
+        let mut wasm: Vec<u8> = vec![];
+        decompression_result.read_to_end(&mut wasm).await.unwrap();
+        println!("{wasm:?}");
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
         log::warn!("Instatiating wasm module...");
         let mut store = Store::default();
-        let module = match Module::new(&store, WASM) {
+        let module = match Module::new(&store, wasm) {
             Ok(module) => module,
             Err(e) => {
                 log::error!("Failed to compile WebAssembly module: {e}");
