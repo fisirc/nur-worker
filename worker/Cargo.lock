@@ -1105,6 +1105,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2116,6 +2122,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "nur_worker"
+version = "0.1.0"
+dependencies = [
+ "async-compression",
+ "aws-config",
+ "aws-sdk-s3",
+ "dotenvy",
+ "env_logger",
+ "flume",
+ "lazy_static",
+ "log",
+ "pretty_env_logger",
+ "tokio",
+ "wasmer",
 ]
 
 [[package]]
@@ -3808,21 +3831,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f42320e61fe2cfd34354ecb597f86f413484a798ba44a8ca1165c58d42da6c1"
 dependencies = [
  "bitflags 2.9.1",
-]
-
-[[package]]
-name = "worker"
-version = "0.1.0"
-dependencies = [
- "async-compression",
- "aws-config",
- "aws-sdk-s3",
- "env_logger",
- "flume",
- "log",
- "pretty_env_logger",
- "tokio",
- "wasmer",
 ]
 
 [[package]]
