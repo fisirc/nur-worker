@@ -1,3 +1,4 @@
+use aws_config::BehaviorVersion;
 use std::{io, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
@@ -34,6 +35,17 @@ impl Server {
         // TODO handshake
         // TODO fetch from S3
         // TODO unzpip
+
+        let config = aws_config::load_defaults(BehaviorVersion::v2025_01_17()).await;
+        let client = aws_sdk_s3::Client::new(&config);
+
+        client
+            .get_object()
+            .bucket("nur-storage")
+            .key("builds/nur-worker.zip")
+            .send()
+            .await;
+
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
         log::warn!("Instatiating wasm module...");
