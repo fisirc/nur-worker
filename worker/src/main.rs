@@ -1,20 +1,25 @@
-use std::{env, error::Error};
+use crate::fetcher::FunctionFetcher;
+use std::error::Error;
 
+mod env;
+mod fetcher;
 mod intrinsics;
 mod logger;
 mod server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    dotenvy::dotenv()?;
     logger::build_logger().init();
 
-    let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "0.0.0.0:6969".to_string());
+    let host = env::HOST.clone();
+    let port = *env::PORT;
 
-    log::info!("⚒️ Starting Nur worker on {addr}");
+    log::info!("⚒️ Starting Nur worker on port {port}");
 
-    let server = server::Server::new(addr).await?;
+    let function_fetcher = FunctionFetcher::from_env().await?;
+
+    let server = server::Server::new((host, port), function_fetcher).await?;
     server.listen_forever_and_ever_amen().await?;
 
     Ok(())

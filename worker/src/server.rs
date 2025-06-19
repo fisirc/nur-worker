@@ -1,11 +1,10 @@
-use aws_config::BehaviorVersion;
-use aws_sdk_s3::config::Credentials;
 use std::{io, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
 use tokio::select;
 
-use crate::intrinsics;
+use crate::fetcher::FunctionFetcher;
+use crate::{fetcher, intrinsics};
 use wasmer::{FunctionEnv, Instance, Module, Store, imports};
 
 // static WASM: &'static [u8] = include_bytes!("../test.wasm");
@@ -15,62 +14,60 @@ const EXPORTED_ALLOC_SYMBOL_NAME: &str = "alloc";
 
 pub struct Server {
     listener: tokio::net::TcpListener,
+    function_fetcher: FunctionFetcher,
 }
 
 impl Server {
-    pub async fn new<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+    pub async fn new<A: ToSocketAddrs>(
+        addr: A,
+        function_fetcher: FunctionFetcher,
+    ) -> io::Result<Self> {
         Ok(Server {
             listener: tokio::net::TcpListener::bind(&addr).await?,
+            function_fetcher,
         })
     }
 
     pub async fn listen_forever_and_ever_amen(self) -> io::Result<()> {
         loop {
             let (socket, addr) = self.listener.accept().await?;
-            log::info!("Accepted connection from {addr}\n");
-            tokio::spawn(Server::handle_conn(socket, addr));
+            log::info!("💌 Gateway request started {addr}\n");
+            tokio::spawn(Server::handle_conn(
+                socket,
+                addr,
+                self.function_fetcher.clone(),
+            ));
         }
     }
 
-    async fn handle_conn(socket: tokio::net::TcpStream, addr: SocketAddr) {
+    async fn handle_conn(
+        socket: tokio::net::TcpStream,
+        addr: SocketAddr,
+        downloader: fetcher::FunctionFetcher,
+    ) {
+        let func_name = "echo_server";
         // TODO handshake
-        // TODO fetch from S3
-        // TODO unzpip
 
-        let credentials = Credentials::new("", "", None, None, "from-env");
-
-        let config = aws_config::defaults(BehaviorVersion::v2025_01_17())
-            .region("us-east-2")
-            .credentials_provider(credentials)
-            .load()
-            .await;
-
-        let client = aws_sdk_s3::Client::new(&config);
-
-        let result = client
-            .get_object()
-            .bucket("nur-storage")
-            .key("echo_server.wasm.zst")
-            .send()
-            .await
-            .unwrap();
-
-        let bytes: &[u8] = &result.body.collect().await.unwrap().into_bytes();
-
-        let mut decompression_result = async_compression::tokio::bufread::ZstdDecoder::new(bytes);
-        let mut wasm: Vec<u8> = vec![];
-        decompression_result.read_to_end(&mut wasm).await.unwrap();
-        println!("{wasm:?}");
+        let wasm_bytes = match downloader.fetch(func_name).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                // TODO: send error back
+                // Probably worth implementing a default handler for this kind of cases
+                log::error!("Could not fetch function \"{func_name}\": {e:?}");
+                return;
+            }
+        };
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
-        log::warn!("Instatiating wasm module...");
+        log::debug!("Instatiating wasm module...");
         let mut store = Store::default();
-        let module = match Module::new(&store, wasm) {
+        let module = match Module::new(&store, wasm_bytes) {
             Ok(module) => module,
             Err(e) => {
                 log::error!("Failed to compile WebAssembly module: {e}");
                 // TODO: send error back
+                // Probably worth implementing a default handler for this kind of cases
                 return;
             }
         };
@@ -102,7 +99,13 @@ impl Server {
             }
         };
 
-        let instance_memory = instance.exports.get_memory("memory").unwrap().clone();
+        let instance_memory = match instance.exports.get_memory("memory") {
+            Ok(mem) => mem.clone(),
+            Err(e) => {
+                log::error!("Unable to get WASM memory. Aborting: {e}");
+                return;
+            }
+        };
 
         func_env.as_mut(&mut store).memory = Some(instance_memory.clone());
 
@@ -132,7 +135,7 @@ impl Server {
                 return;
             }
         };
-        log::warn!("Wasm module instantiated!");
+        log::debug!("Wasm module instantiated!");
 
         let mut buf = vec![0; 1024];
 
@@ -141,8 +144,7 @@ impl Server {
                 let msg = rx.recv_async().await;
                 match msg {
                     Ok(intrinsics::NurWasmMessage::Abort) => {
-                        log::info!("Aborting connection with {addr}");
-                        socket_write_half.shutdown().await.unwrap();
+                        let _ = socket_write_half.shutdown().await;
                         break;
                     }
                     Ok(intrinsics::NurWasmMessage::SendData { data }) => {
@@ -159,20 +161,23 @@ impl Server {
             }
         });
 
-        let read_connection = tokio::spawn(async move {
+        let read_socket_task = tokio::spawn(async move {
             loop {
                 let read_n = { socket_read_half.read(&mut buf).await };
 
                 match read_n {
                     Ok(0) => {
-                        log::info!("Connection closed by {addr}");
                         break;
                     }
                     Ok(n) => {
-                        // TODO: unwraps should abort the execution safely
-                        let ptr = wasm_alloc
-                            .call(&mut store, &[wasmer::Value::I32(n as i32)])
-                            .unwrap();
+                        let ptr = match wasm_alloc.call(&mut store, &[wasmer::Value::I32(n as i32)])
+                        {
+                            Ok(ptr) => ptr,
+                            Err(e) => {
+                                log::error!("Call error: alloc({n}): {e}");
+                                return;
+                            }
+                        };
 
                         let ptr = &ptr[0];
 
@@ -186,17 +191,27 @@ impl Server {
                             }
                         };
 
-                        instance_memory
+                        match instance_memory
                             .view(&store)
                             .write(ptr_num as u64, &buf[..n])
-                            .unwrap();
+                        {
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::error!("Failed to write to WASM memory at &{ptr_num}: {}", e);
+                                return;
+                            }
+                        };
 
-                        wasm_poll_stream
-                            .call(
-                                &mut store,
-                                &[wasmer::Value::I32(ptr_num), wasmer::Value::I32(n as i32)],
-                            )
-                            .unwrap();
+                        match wasm_poll_stream.call(
+                            &mut store,
+                            &[wasmer::Value::I32(ptr_num), wasmer::Value::I32(n as i32)],
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::error!("Call error: poll_stream({ptr_num}, {n}): {e}",);
+                                return;
+                            }
+                        };
                     }
                     Err(e) => {
                         log::error!("Error reading from socket: {}", e);
@@ -208,10 +223,10 @@ impl Server {
 
         select! {
             _ = listen_wasm_messages_task => {
-                log::info!("WASM message listener task completed for {addr}");
+                log::debug!("listen_wasm_messages_task done for {addr}");
             },
-            _ = read_connection => {
-                log::info!("Read connection task completed for {addr}");
+            _ = read_socket_task => {
+                log::debug!("read_socket_task done for {addr}");
             }
         }
     }
