@@ -39,12 +39,15 @@ impl Server {
         let config = aws_config::load_defaults(BehaviorVersion::v2025_01_17()).await;
         let client = aws_sdk_s3::Client::new(&config);
 
-        client
+        let result = client
             .get_object()
             .bucket("nur-storage")
             .key("builds/nur-worker.zip")
             .send()
-            .await;
+            .await
+            .unwrap();
+
+        let bytes = result.body.collect().await.unwrap().into_bytes();
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
