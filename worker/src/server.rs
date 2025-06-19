@@ -43,12 +43,13 @@ impl Server {
     async fn handle_conn(
         socket: tokio::net::TcpStream,
         addr: SocketAddr,
-        downloader: fetcher::FunctionFetcher,
+        function_fetcher: fetcher::FunctionFetcher,
     ) {
         let func_name = "echo_server";
         // TODO handshake
 
-        let wasm_bytes = match downloader.fetch(func_name).await {
+        log::debug!("start:function_fetcher.fetch");
+        let wasm_bytes = match function_fetcher.fetch(func_name).await {
             Ok(bytes) => bytes,
             Err(e) => {
                 // TODO: send error back
@@ -57,10 +58,11 @@ impl Server {
                 return;
             }
         };
+        log::debug!("finish:function_fetcher.fetch");
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
-        log::debug!("Instatiating wasm module...");
+        log::debug!("start:wasm_module_instantiating");
         let mut store = Store::default();
         let module = match Module::new(&store, wasm_bytes) {
             Ok(module) => module,
@@ -135,7 +137,7 @@ impl Server {
                 return;
             }
         };
-        log::debug!("Wasm module instantiated!");
+        log::debug!("end:wasm_module_instantiating");
 
         let mut buf = vec![0; 1024];
 
