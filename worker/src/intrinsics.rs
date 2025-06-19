@@ -13,6 +13,7 @@ pub enum NurWasmMessage {
 }
 
 pub fn nur_log(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
+    log::trace!("nur_nur_log({ptr}, {len})");
     let data = env.data();
     let store = env.as_store_ref();
     let memory = data.memory.as_ref().unwrap();
@@ -31,6 +32,7 @@ pub fn nur_log(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
 }
 
 pub fn nur_send(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
+    log::trace!("nur_send({ptr}, {len})");
     let data = env.data();
     let store = env.as_store_ref();
     let memory = data.memory.as_ref().unwrap();
@@ -43,11 +45,6 @@ pub fn nur_send(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
         })
         .unwrap();
 
-    log::debug!(
-        "nur_send: called with {n}",
-        n = String::from_utf8_lossy(&memory_slice)
-    );
-
     data.channel_tx
         .send(NurWasmMessage::SendData {
             data: memory_slice.to_owned(),
@@ -57,6 +54,7 @@ pub fn nur_send(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
 
 /// Aborts with the given message described by a fat ointer in memory.
 pub fn nur_end(mut env: FunctionEnvMut<NurFunctionEnv>) {
+    log::trace!("nur_end()");
     let data = env.data_mut();
     data.channel_tx.send(NurWasmMessage::Abort).unwrap();
 }
