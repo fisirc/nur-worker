@@ -1,5 +1,6 @@
 use std::{env, error::Error};
 
+mod intrinsics;
 mod logger;
 mod server;
 
