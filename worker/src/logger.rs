@@ -23,7 +23,7 @@ pub fn build_logger() -> env_logger::Builder {
             width: max_width,
         });
 
-        let time = f.timestamp_millis();
+        let time = f.timestamp_micros();
         writeln!(f, "{} {} {} > {}", time, level, target, record.args(),)
     });
 
@@ -31,7 +31,8 @@ pub fn build_logger() -> env_logger::Builder {
         builder.filter_level(log::LevelFilter::Info);
     }
 
-    builder.parse_env("RUST_LOG").format_indent(None);
+    builder.parse_env("RUST_LOG");
+
     builder
 }
 
