@@ -5,10 +5,28 @@ edition = "2024"
 
 [dependencies]
 aws-config = "1.8.0"
-aws-sdk-s3 = { version = "1.92.0" }
+aws-sdk-s3 = "1.93.0"
 log = "0.4.27"
-tokio = { version = "1.45.1", features = ["macros", "rt", "rt-multi-thread"] }
+tokio = { version = "1.45.1", default-features = false, features = [
+    "macros",
+    "rt",
+    "rt-multi-thread",
+] }
 pretty_env_logger = "0.5.0"
-# Should match with pretty_env_logger
+# Don't change, Should match with pretty_env_logger
 env_logger = "0.10"
-wasmer = "6.0.1"
+flume = { version = "0.11.1", default-features = false, features = ["async"] }
+
+[dependencies.wasmer]
+version = "6.0.1"
+default-features = false
+features = [
+    "compiler",
+    "cranelift",
+    "std",
+    "sys",
+    "sys-default",
+    "wasmer-compiler-cranelift",
+    "wasmparser",
+    "wat",
+]
