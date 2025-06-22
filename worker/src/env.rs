@@ -26,4 +26,6 @@ lazy_static! {
     pub static ref S3_SECRET_ACCESS_KEY: String = env_var!("S3_SECRET_ACCESS_KEY");
 
     pub static ref S3_REGION: String = env_var_or!("S3_REGION", "us-east-2");
+
+    pub static ref CACHE_DIR: String = env_var_or!("CACHE_DIR", ".cache");
 }
