@@ -3,6 +3,7 @@ use std::error::Error;
 
 mod env;
 mod fetcher;
+mod handshake;
 mod intrinsics;
 mod logger;
 mod server;

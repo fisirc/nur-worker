@@ -4,6 +4,7 @@ use tokio::net::ToSocketAddrs;
 use tokio::select;
 
 use crate::fetcher::FunctionFetcher;
+use crate::handshake::handle_handshake;
 use crate::{fetcher, intrinsics};
 use wasmer::{FunctionEnv, Instance, Module, Store, imports};
 
@@ -31,7 +32,7 @@ impl Server {
     pub async fn listen_forever_and_ever_amen(self) -> io::Result<()> {
         loop {
             let (socket, addr) = self.listener.accept().await?;
-            log::info!("💌 Gateway request started {addr}\n");
+            log::info!("💌 Gateway request started {addr}");
             tokio::spawn(Server::handle_conn(
                 socket,
                 addr,
@@ -45,25 +46,19 @@ impl Server {
         addr: SocketAddr,
         function_fetcher: fetcher::FunctionFetcher,
     ) {
-        let func_name = "echo_server";
-        // TODO handshake
-
-        /*
-        function_id:
-        function_deployment_id:
-        */
-
-        log::debug!("start:function_fetcher.fetch");
-        let wasm_bytes = match function_fetcher.fetch(func_name).await {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                // TODO: send error back
-                // Probably worth implementing a default handler for this kind of cases
-                log::error!("Could not fetch function \"{func_name}\": {e:?}");
+        let mut socket = socket;
+        log::debug!("start:handle_handshake");
+        let handshake = match handle_handshake(&mut socket, function_fetcher).await {
+            Ok(h) => h,
+            Err(_) => {
+                log::error!("error:handle_handshake for addr={addr}");
                 return;
             }
         };
-        log::debug!("finish:function_fetcher.fetch");
+        log::debug!("finish:handle_handshake");
+
+        let _function_uuid = handshake.function_uuid;
+        let wasm_bytes = handshake.wasm_bytes;
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
