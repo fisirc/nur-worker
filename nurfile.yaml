@@ -1,11 +1,4 @@
 functions:
-  - name: hello-world
-    directory: /examples/hello_world
-    template: rust
-    build:
-      command: cargo build --target wasm32-unknown-unknown --release
-      output: /target/wasm32-unknown-unknown/release/hello_world.wasm
-
   - name: echo-server
     directory: /examples/echo_server
     template: rust
