@@ -11,7 +11,7 @@ pub fn build_logger() -> env_logger::Builder {
 
     builder.format(|f, record| {
         use std::io::Write;
-        let target = record.target();
+        let target = record.module_path_static().unwrap();
         let max_width = max_target_width(target);
 
         let mut style = f.style();
@@ -24,7 +24,7 @@ pub fn build_logger() -> env_logger::Builder {
         });
 
         let time = f.timestamp_micros();
-        writeln!(f, "{} {} {} > {}", time, level, target, record.args(),)
+        writeln!(f, "{time} {level} {target} > {}", record.args(),)
     });
 
     if std::env::var_os("RUST_LOG").is_none() {
