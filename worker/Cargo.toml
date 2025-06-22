@@ -12,9 +12,7 @@ tokio = { version = "1.45.1", default-features = false, features = [
     "rt",
     "rt-multi-thread",
 ] }
-pretty_env_logger = "0.5.0"
-# Don't change, Should match with pretty_env_logger
-env_logger = "0.10"
+env_logger = "0.11.8"
 flume = { version = "0.11.1", default-features = false, features = ["async"] }
 async-compression = { version = "0.4.25", features = ["zstd", "tokio"] }
 dotenvy = "0.15.7"
