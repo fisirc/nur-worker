@@ -35,7 +35,7 @@ static RESPONSE: &str = "HTTP/1.1 200 OK\r\n\
 Content-Type: application/json\r\n\
 Content-Length: 27\r\n\
 \r\n\
-{\"msg\": \"Hello world, wa!\"}";
+{\"msg\": \"Hello world, wasm!\"}";
 
 // This will be called by wasmer
 #[unsafe(no_mangle)]
