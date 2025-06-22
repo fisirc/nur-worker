@@ -1,6 +1,5 @@
 use tokio::io::AsyncReadExt;
 
-#[allow(unused)]
 const CACHE_DIR: &str = ".cache";
 
 #[derive(Clone)]
