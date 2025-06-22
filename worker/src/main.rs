@@ -9,7 +9,7 @@ mod server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    dotenvy::dotenv()?;
+    let _ = dotenvy::dotenv()?;
     logger::build_logger().init();
 
     let host = env::HOST.clone();
