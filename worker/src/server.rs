@@ -48,6 +48,11 @@ impl Server {
         let func_name = "echo_server";
         // TODO handshake
 
+        /*
+        function_id:
+        function_deployment_id:
+        */
+
         log::debug!("start:function_fetcher.fetch");
         let wasm_bytes = match function_fetcher.fetch(func_name).await {
             Ok(bytes) => bytes,
