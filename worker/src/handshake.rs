@@ -3,7 +3,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::fetcher;
 
 const HANDSHAKE_OK: u8 = 0;
-const HANDSHAKE_MALRFOMED: u8 = 1;
+const HANDSHAKE_MALFORMED: u8 = 1;
 const HANDSHAKE_NOT_FOUND: u8 = 2;
 
 pub struct HandshakeSuccess {
@@ -28,7 +28,7 @@ where
         Ok(v) => v,
         Err(e) => {
             log::error!("Unable to read version field for handshake: {e}");
-            stream.write_u8(HANDSHAKE_MALRFOMED).await.unwrap();
+            stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
             return Err(());
         }
     };
@@ -44,7 +44,7 @@ where
         Ok(_) => uuid_from_be_bytes(function_uuid_bytes),
         Err(e) => {
             log::error!("Unable to read function uuid field for handshake: {e}");
-            stream.write_u8(HANDSHAKE_MALRFOMED).await.unwrap();
+            stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
             return Err(());
         }
     };
@@ -55,7 +55,7 @@ where
         Ok(len) => len,
         Err(e) => {
             log::error!("Unable to read last deployment field for handshake: {e}");
-            stream.write_u8(HANDSHAKE_MALRFOMED).await.unwrap();
+            stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
             return Err(());
         }
     };
