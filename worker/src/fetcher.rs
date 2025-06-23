@@ -114,12 +114,14 @@ impl FunctionFetch for FunctionFetcher {
                 }
             }
         }
+        // TODO: tell the builder to use .zst instead of .zstd
+        let remote_filename = format!("builds/{function_uuid}.wasm.zstd");
 
         let get_result = match self
             .s3_client
             .get_object()
             .bucket("nur-storage")
-            .key(format!("builds/{}.wasm.zst", function_uuid))
+            .key(remote_filename)
             .send()
             .await
         {
