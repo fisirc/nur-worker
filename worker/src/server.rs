@@ -50,8 +50,8 @@ impl Server {
         log::debug!("start:handle_handshake");
         let handshake = match handle_handshake(&mut socket, function_fetcher).await {
             Ok(h) => h,
-            Err(_) => {
-                log::error!("error:handle_handshake for addr={addr}");
+            Err(e) => {
+                log::error!("error:handle_handshake for addr={addr}: {e}");
                 return;
             }
         };

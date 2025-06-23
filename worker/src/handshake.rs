@@ -16,7 +16,7 @@ pub struct HandshakeSuccess {
 pub async fn handle_handshake<R>(
     stream: R,
     function_fetcher: impl fetcher::FunctionFetch,
-) -> Result<HandshakeSuccess, ()>
+) -> Result<HandshakeSuccess, String>
 where
     R: AsyncReadExt + AsyncWriteExt + Unpin + Send,
 {
@@ -27,25 +27,23 @@ where
     let version = match stream.read_u8().await {
         Ok(v) => v,
         Err(e) => {
-            log::error!("Unable to read version field for handshake: {e}");
             stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
-            return Err(());
+            return Err(format!("malformed handshake version: {e}"));
         }
     };
     log::debug!("read version={version}");
 
     match version {
         1 => {}
-        _ => return Err(()),
+        _ => return Err(format!("unsupported handshake version {version}")),
     };
 
     let function_uuid_bytes = &mut [0_u8; 16];
     let function_uuid = match stream.read_exact(function_uuid_bytes).await {
         Ok(_) => uuid_from_be_bytes(function_uuid_bytes),
         Err(e) => {
-            log::error!("Unable to read function uuid field for handshake: {e}");
             stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
-            return Err(());
+            return Err(format!("malformed handshake function uuid: {e}"));
         }
     };
     log::debug!("read function_uuid={function_uuid}");
@@ -54,9 +52,8 @@ where
     let last_deployment = match stream.read_u64().await {
         Ok(len) => len,
         Err(e) => {
-            log::error!("Unable to read last deployment field for handshake: {e}");
             stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
-            return Err(());
+            return Err(format!("malformed handshake last deployment: {e}"));
         }
     };
     log::debug!("read last_deployment={last_deployment}");
@@ -71,8 +68,7 @@ where
             // TODO: send error back
             // Probably worth implementing a default handler for this kind of cases
             stream.write_u8(HANDSHAKE_NOT_FOUND).await.unwrap();
-            log::error!("Could not fetch function \"{function_uuid}\": {e:?}");
-            return Err(());
+            return Err(format!("unable to fetch function {function_uuid}: {e:?}"));
         }
     };
     log::debug!("finish:function_fetcher.fetch handshake OK");
