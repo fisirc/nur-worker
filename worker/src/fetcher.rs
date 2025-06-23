@@ -12,6 +12,14 @@ pub enum FetchFunctionError {
     Decompression,
 }
 
+pub trait FunctionFetch {
+    async fn fetch(
+        &self,
+        function_uuid: impl AsRef<str>,
+        last_deployment_timestamp: u64,
+    ) -> Result<Vec<u8>, FetchFunctionError>;
+}
+
 impl FunctionFetcher {
     pub async fn from_env() -> Result<Self, String> {
         let credentials = aws_sdk_s3::config::Credentials::new(
@@ -44,12 +52,14 @@ impl FunctionFetcher {
             cache_dir,
         })
     }
+}
 
+impl FunctionFetch for FunctionFetcher {
     /// Returns the bytes of the WASM function uuid to run.
     /// Because we fetch the functions from the network, a cache mechanism is applied.
     /// The [last_deployment_timestamp] helps for cache invalidation: When the cached function
     /// has been stored before this deployment date, then need to fetch the newest version.
-    pub async fn fetch(
+    async fn fetch(
         &self,
         function_uuid: impl AsRef<str>,
         last_deployment_timestamp: u64,
