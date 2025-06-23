@@ -9,9 +9,21 @@ static MAX_MODULE_WIDTH: AtomicUsize = AtomicUsize::new(0);
 pub fn build_logger() -> env_logger::Builder {
     let mut builder = env_logger::Builder::new();
 
-    builder.format(|f, record| {
+    let pkg_name = crate::env::CARGO_PKG_NAME.clone();
+    let pkg_name: &'static str = pkg_name.leak();
+    let pkg_name_len = pkg_name.len();
+
+    builder.format(move |f, record| {
         use std::io::Write;
-        let target = record.target();
+        let mut target = record.target();
+        if target.starts_with(pkg_name) {
+            if target.len() == pkg_name_len {
+                target = "nur";
+            } else {
+                target = &target[pkg_name.len() + 2..];
+            }
+        }
+
         let max_width = max_target_width(target);
 
         let mut style = f.style();
@@ -24,7 +36,7 @@ pub fn build_logger() -> env_logger::Builder {
         });
 
         let time = f.timestamp_micros();
-        writeln!(f, "{} {} {} > {}", time, level, target, record.args(),)
+        writeln!(f, "{time} {level} {target} > {}", record.args(),)
     });
 
     if std::env::var_os("RUST_LOG").is_none() {
