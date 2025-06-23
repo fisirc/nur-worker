@@ -15,11 +15,12 @@ pub struct HandshakeSuccess {
 
 pub async fn handle_handshake<R>(
     stream: R,
-    function_fetcher: fetcher::FunctionFetcher,
+    function_fetcher: impl fetcher::FunctionFetch,
 ) -> Result<HandshakeSuccess, ()>
 where
     R: AsyncReadExt + AsyncWriteExt + Unpin + Send,
 {
+    log::debug!("start:handle_handshake");
     let mut stream = stream;
 
     // version is 8bit integer
@@ -31,6 +32,7 @@ where
             return Err(());
         }
     };
+    log::debug!("read version={version}");
 
     match version {
         1 => {}
@@ -46,6 +48,7 @@ where
             return Err(());
         }
     };
+    log::debug!("read function_uuid={function_uuid}");
 
     // UNIX timestamp (seconds) for the last deployment of this function
     let last_deployment = match stream.read_u64().await {
@@ -56,6 +59,7 @@ where
             return Err(());
         }
     };
+    log::debug!("read last_deployment={last_deployment}");
 
     log::debug!("start:function_fetcher.fetch");
     let wasm_bytes = match function_fetcher
@@ -102,4 +106,54 @@ fn uuid_from_be_bytes(bytes: &mut [u8; 16]) -> String {
         bytes[14],
         bytes[15]
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::DuplexStream;
+
+    use super::*;
+    use crate::fetcher::FunctionFetch;
+
+    struct FunctionFetcherStub {}
+    impl FunctionFetch for FunctionFetcherStub {
+        async fn fetch(
+            &self,
+            _function_uuid: impl AsRef<str>,
+            _last_deployment_timestamp: u64,
+        ) -> Result<Vec<u8>, fetcher::FetchFunctionError> {
+            Ok(vec![])
+        }
+    }
+
+    const TEST_UUID: u128 = 22471393830047846750117075429135178262;
+
+    fn setup() {
+        crate::logger::build_logger().init();
+    }
+
+    #[tokio::test]
+    async fn test_handshake_v1() {
+        setup();
+        let function_fetcher = FunctionFetcherStub {};
+
+        let (mut gateway, worker): (DuplexStream, DuplexStream) = tokio::io::duplex(64);
+
+        let mut gateway_handshake = Vec::<u8>::new();
+        gateway_handshake.push(1); // version 1
+        gateway_handshake.extend_from_slice(&TEST_UUID.to_be_bytes()); // function uuid (16 bytes)
+        gateway_handshake.extend_from_slice(&0_u64.to_be_bytes()); // last deployment timestamp (8 bytes)
+
+        log::info!("starting handshake");
+
+        // Simulate the gateway writing to us
+        gateway.write_all(&gateway_handshake).await.unwrap();
+
+        handle_handshake(worker, function_fetcher).await.unwrap();
+
+        // Result should be OK
+        let result = gateway.read_u8().await.unwrap();
+        log::info!("handshake ended. result is {result}");
+        assert_eq!(result, HANDSHAKE_OK);
+    }
 }
