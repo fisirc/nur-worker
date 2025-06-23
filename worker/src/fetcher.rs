@@ -119,7 +119,7 @@ impl FunctionFetch for FunctionFetcher {
             .s3_client
             .get_object()
             .bucket("nur-storage")
-            .key(format!("{}.wasm.zst", function_uuid))
+            .key(format!("builds/{}.wasm.zst", function_uuid))
             .send()
             .await
         {
