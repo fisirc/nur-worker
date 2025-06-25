@@ -84,10 +84,10 @@ where
     // Handshake OK
     stream.write_u8(HANDSHAKE_OK).await.unwrap();
 
-    return Ok(HandshakeSuccess {
+    Ok(HandshakeSuccess {
         function_uuid,
         wasm_bytes,
-    });
+    })
 }
 
 fn uuid_from_be_bytes(bytes: &mut [u8; 16]) -> String {

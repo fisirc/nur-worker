@@ -151,7 +151,7 @@ impl FunctionFetch for FunctionFetcher {
             log::error!("Failed to write wasm module to cache: {e}");
         }
 
-        return Ok(wasm_bytes);
+        Ok(wasm_bytes)
     }
 }
 
