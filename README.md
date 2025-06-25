@@ -1,5 +1,5 @@
 <h1 align="center">
-Nur workers !!!!
+Nur workers
 </h1>
 
 <p align="center">
