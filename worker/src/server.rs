@@ -1,11 +1,12 @@
+use crate::fetcher::FunctionFetcher;
+use crate::handshake::handle_handshake;
+use crate::logs_service::{LogsService, SupabaseLogService};
+use crate::{fetcher, intrinsics};
+use std::sync::Arc;
 use std::{io, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
 use tokio::select;
-
-use crate::fetcher::FunctionFetcher;
-use crate::handshake::handle_handshake;
-use crate::{fetcher, intrinsics};
 use wasmer::{FunctionEnv, Instance, Module, Store, imports};
 
 // static WASM: &'static [u8] = include_bytes!("../test.wasm");
@@ -15,17 +16,20 @@ const EXPORTED_ALLOC_SYMBOL_NAME: &str = "alloc";
 
 pub struct Server {
     listener: tokio::net::TcpListener,
-    function_fetcher: FunctionFetcher,
+    function_fetcher: Arc<FunctionFetcher>,
+    logs_service: Arc<SupabaseLogService>,
 }
 
 impl Server {
     pub async fn new<A: ToSocketAddrs>(
         addr: A,
         function_fetcher: FunctionFetcher,
+        logs_service: SupabaseLogService,
     ) -> io::Result<Self> {
         Ok(Server {
             listener: tokio::net::TcpListener::bind(&addr).await?,
-            function_fetcher,
+            function_fetcher: Arc::new(function_fetcher),
+            logs_service: Arc::new(logs_service),
         })
     }
 
@@ -33,10 +37,14 @@ impl Server {
         loop {
             let (socket, addr) = self.listener.accept().await?;
             log::info!("💌 Gateway request started {addr}");
+            let function_fetcher = self.function_fetcher.clone();
+            let logs_service = self.logs_service.clone();
+
             tokio::spawn(Server::handle_conn(
                 socket,
                 addr,
-                self.function_fetcher.clone(),
+                function_fetcher,
+                logs_service,
             ));
         }
     }
@@ -44,11 +52,12 @@ impl Server {
     async fn handle_conn(
         socket: tokio::net::TcpStream,
         addr: SocketAddr,
-        function_fetcher: fetcher::FunctionFetcher,
+        function_fetcher: Arc<fetcher::FunctionFetcher>,
+        logs_service: Arc<SupabaseLogService>,
     ) {
         let mut socket = socket;
         log::debug!("start:handle_handshake");
-        let handshake = match handle_handshake(&mut socket, function_fetcher).await {
+        let handshake = match handle_handshake(&mut socket, &*function_fetcher).await {
             Ok(h) => h,
             Err(e) => {
                 log::error!("error:handle_handshake for addr={addr}: {e}");
@@ -57,7 +66,7 @@ impl Server {
         };
         log::debug!("finish:handle_handshake");
 
-        let _function_uuid = handshake.function_uuid;
+        let function_uuid = handshake.function_uuid;
         let wasm_bytes = handshake.wasm_bytes;
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
@@ -143,8 +152,7 @@ impl Server {
 
         let listen_wasm_messages_task = tokio::spawn(async move {
             loop {
-                let msg = rx.recv_async().await;
-                match msg {
+                match rx.recv_async().await {
                     Ok(intrinsics::NurWasmMessage::Abort) => {
                         let _ = socket_write_half.shutdown().await;
                         break;
@@ -154,6 +162,20 @@ impl Server {
                             log::error!("Failed to send data to {addr}: {e}");
                             break;
                         }
+                    }
+                    Ok(intrinsics::NurWasmMessage::LogMessage { log }) => {
+                        let logs_service = logs_service.clone();
+                        // Parallelize log sending
+                        tokio::spawn(async move {
+                            logs_service
+                                .send(&function_uuid, &log)
+                                .await
+                                .unwrap_or_else(|e| {
+                                    log::error!(
+                                        "logs_service.send: Failed to send log for function_uuid={function_uuid}: {e}"
+                                    );
+                                });
+                        });
                     }
                     Err(flume::RecvError::Disconnected) => {
                         log::info!("Channel closed, aborting connection with {addr}");
