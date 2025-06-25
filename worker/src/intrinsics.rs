@@ -1,14 +1,16 @@
 use std::ops::Range;
+use uuid::Uuid;
 use wasmer::{AsStoreRef, FunctionEnvMut};
 
 pub struct NurFunctionEnv {
+    pub function_id: Uuid,
     pub memory: Option<wasmer::Memory>,
     pub channel_tx: flume::Sender<NurWasmMessage>,
-    // TODO: log service reference
 }
 
 pub enum NurWasmMessage {
     Abort,
+    LogMessage { msg: String },
     SendData { data: Vec<u8> },
 }
 
@@ -27,8 +29,10 @@ pub fn nur_log(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
         .unwrap();
 
     let msg = String::from_utf8_lossy(memory_slice.as_slice());
-    // TODO: send to log service
-    println!("{msg}");
+
+    data.channel_tx.send(NurWasmMessage::LogMessage {
+        msg: msg.to_string(),
+    });
 }
 
 pub fn nur_send(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
