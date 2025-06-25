@@ -17,6 +17,12 @@ flume = { version = "0.11.1", default-features = false, features = ["async"] }
 async-compression = { version = "0.4.25", features = ["zstd", "tokio"] }
 dotenvy = "0.15.7"
 lazy_static = "1.5.0"
+deadpool-postgres = "0.14.1"
+tokio-postgres = { version = "0.7.13", default-features = false, features = [
+    "runtime",
+    "with-uuid-1",
+] }
+uuid = { version = "1.17.0", features = ["v4"] }
 
 [dependencies.wasmer]
 version = "6.0.1"

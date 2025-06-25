@@ -1,4 +1,7 @@
+use std::str::FromStr;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use uuid::Uuid;
 
 use crate::fetcher;
 
@@ -8,7 +11,7 @@ const HANDSHAKE_NOT_FOUND: u8 = 2;
 
 pub struct HandshakeSuccess {
     /// Function uuid to run
-    pub function_uuid: String,
+    pub function_uuid: uuid::Uuid,
     /// .wasm module to run in bytes
     pub wasm_bytes: Vec<u8>,
 }
@@ -20,7 +23,6 @@ pub async fn handle_handshake<R>(
 where
     R: AsyncReadExt + AsyncWriteExt + Unpin + Send,
 {
-    log::debug!("start:handle_handshake");
     let mut stream = stream;
 
     // version is 8bit integer
@@ -40,7 +42,13 @@ where
 
     let function_uuid_bytes = &mut [0_u8; 16];
     let function_uuid = match stream.read_exact(function_uuid_bytes).await {
-        Ok(_) => uuid_from_be_bytes(function_uuid_bytes),
+        Ok(_) => match Uuid::from_str(&uuid_from_be_bytes(function_uuid_bytes)) {
+            Ok(function_uuid) => function_uuid,
+            Err(e) => {
+                stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
+                return Err(format!("malformed handshake function uuid: {e}"));
+            }
+        },
         Err(e) => {
             stream.write_u8(HANDSHAKE_MALFORMED).await.unwrap();
             return Err(format!("malformed handshake function uuid: {e}"));
@@ -76,10 +84,10 @@ where
     // Handshake OK
     stream.write_u8(HANDSHAKE_OK).await.unwrap();
 
-    return Ok(HandshakeSuccess {
+    Ok(HandshakeSuccess {
         function_uuid,
         wasm_bytes,
-    });
+    })
 }
 
 fn uuid_from_be_bytes(bytes: &mut [u8; 16]) -> String {
@@ -115,7 +123,7 @@ mod tests {
     impl FunctionFetch for FunctionFetcherStub {
         async fn fetch(
             &self,
-            _function_uuid: impl AsRef<str>,
+            _function_uuid: impl AsRef<Uuid>,
             _last_deployment_timestamp: u64,
         ) -> Result<Vec<u8>, fetcher::FetchFunctionError> {
             Ok(vec![])

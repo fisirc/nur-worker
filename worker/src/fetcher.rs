@@ -1,4 +1,5 @@
 use tokio::io::AsyncReadExt;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FunctionFetcher {
@@ -15,7 +16,7 @@ pub enum FetchFunctionError {
 pub trait FunctionFetch {
     async fn fetch(
         &self,
-        function_uuid: impl AsRef<str>,
+        function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
     ) -> Result<Vec<u8>, FetchFunctionError>;
 }
@@ -61,7 +62,7 @@ impl FunctionFetch for FunctionFetcher {
     /// has been stored before this deployment date, then need to fetch the newest version.
     async fn fetch(
         &self,
-        function_uuid: impl AsRef<str>,
+        function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
     ) -> Result<Vec<u8>, FetchFunctionError> {
         let function_uuid = function_uuid.as_ref();
@@ -150,6 +151,18 @@ impl FunctionFetch for FunctionFetcher {
             log::error!("Failed to write wasm module to cache: {e}");
         }
 
-        return Ok(wasm_bytes);
+        Ok(wasm_bytes)
+    }
+}
+
+impl FunctionFetch for &'_ FunctionFetcher {
+    async fn fetch(
+        &self,
+        function_uuid: impl AsRef<Uuid>,
+        last_deployment_timestamp: u64,
+    ) -> Result<Vec<u8>, FetchFunctionError> {
+        (*self)
+            .fetch(function_uuid, last_deployment_timestamp)
+            .await
     }
 }
