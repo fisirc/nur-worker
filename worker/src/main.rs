@@ -16,12 +16,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let server_addr = (env::HOST.clone(), *env::PORT);
 
-    log::info!("⌛️ Starting Nur worker...");
-
+    log::info!("📒 Connecting to log service...");
     let logs_service = SupabaseLogService::from_env();
-
     logs_service.check_connection().await?;
+    log::info!("✅ Log service connected successfully");
 
+    log::info!("⌛️ Starting Nur worker...");
     let function_fetcher = FunctionFetcher::from_env().await?;
     let server = server::Server::new(&server_addr, function_fetcher, logs_service).await?;
 
