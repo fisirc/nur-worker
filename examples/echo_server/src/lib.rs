@@ -45,6 +45,8 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
     };
     let content_len = content.len();
 
+    nur_log("Hola UX! El usuario nos ha enviado una petición!!");
+
     nur_send(
         format!(
             "HTTP/1.1 200 OK\r
