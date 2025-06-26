@@ -120,6 +120,12 @@ impl FunctionFetch for FunctionFetcher {
                 match cached_file.read_to_end(&mut cached_file_bytes).await {
                     Ok(_) => {
                         log::debug!("Using cached file: {filename}");
+                        // Store in memory cache
+                        {
+                            let mut memory_cache = self.memory_cache.write().await;
+                            memory_cache
+                                .insert(*function_uuid, Arc::from(cached_file_bytes.clone()));
+                        }
                         return Ok(Arc::from(cached_file_bytes));
                     }
                     Err(e) => {
