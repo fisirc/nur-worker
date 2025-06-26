@@ -115,8 +115,8 @@ impl FunctionFetch for FunctionFetcher {
                 }
             }
         }
-        // TODO: tell the builder to use .zst instead of .zstd
-        let remote_filename = format!("builds/{function_uuid}.wasm.zstd");
+
+        let remote_filename = format!("builds/{function_uuid}.wasm.zst");
 
         let get_result = match self
             .s3_client
