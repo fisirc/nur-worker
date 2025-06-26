@@ -21,5 +21,3 @@ required artifacts and run the WASM code.
 
 The program outputs are sent to the Nur log collector, which makes them
 available to the programs' authors.
-
-<!-- TODO -->
