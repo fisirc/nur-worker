@@ -1,9 +1,11 @@
-use tokio::io::AsyncReadExt;
+use std::{collections::HashMap, sync::Arc};
+use tokio::{io::AsyncReadExt, sync::RwLock};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FunctionFetcher {
     s3_client: aws_sdk_s3::Client,
+    memory_cache: Arc<RwLock<HashMap<Uuid, Vec<u8>>>>,
     cache_dir: String,
 }
 
@@ -31,6 +33,13 @@ impl FunctionFetcher {
             "nur",
         );
 
+        let cache_dir = crate::env::CACHE_DIR.clone();
+
+        // Ensure the cache directory exists
+        if let Err(e) = tokio::fs::create_dir_all(&cache_dir).await {
+            return Err(format!("Failed to create cache directory: {e}"));
+        }
+
         let s3_region: &'static str = crate::env::S3_REGION.clone().leak();
 
         let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_01_17())
@@ -41,15 +50,11 @@ impl FunctionFetcher {
 
         let client = aws_sdk_s3::Client::new(&config);
 
-        let cache_dir = crate::env::CACHE_DIR.clone();
-
-        // Ensure the cache directory exists
-        if let Err(e) = tokio::fs::create_dir_all(&cache_dir).await {
-            return Err(format!("Failed to create cache directory: {e}"));
-        }
+        let memory_cache = Arc::new(RwLock::new(HashMap::new()));
 
         Ok(FunctionFetcher {
             s3_client: client,
+            memory_cache,
             cache_dir,
         })
     }
@@ -68,7 +73,16 @@ impl FunctionFetch for FunctionFetcher {
         let function_uuid = function_uuid.as_ref();
         let filename = format!("{cache}/{function_uuid}.wasm", cache = self.cache_dir);
 
-        let mut fetch_from_cache = false;
+        // Check if the function is in memory cache
+        {
+            let memory_cache = self.memory_cache.read().await;
+            if let Some(cached_bytes) = memory_cache.get(function_uuid) {
+                log::debug!("Using in-memory cache for function {function_uuid}");
+                return Ok(cached_bytes.clone());
+            }
+        }
+
+        let mut fetch_from_local_cache = false;
 
         match tokio::fs::metadata(&filename).await {
             Ok(metadata) => {
@@ -79,19 +93,19 @@ impl FunctionFetch for FunctionFetcher {
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
                     if last_deployment_timestamp > cached_timestamp {
-                        fetch_from_cache = true;
+                        fetch_from_local_cache = true;
                     }
                 } else {
-                    fetch_from_cache = true;
+                    fetch_from_local_cache = true;
                 }
             }
             Err(_) => {
                 // File does not exist, so must fetch from network
-                fetch_from_cache = true;
+                fetch_from_local_cache = true;
             }
         };
 
-        if fetch_from_cache {
+        if fetch_from_local_cache {
             let cached_file = tokio::fs::OpenOptions::new()
                 .create(false)
                 .read(true)
@@ -105,6 +119,7 @@ impl FunctionFetch for FunctionFetcher {
 
                 match cached_file.read_to_end(&mut cached_file_bytes).await {
                     Ok(_) => {
+                        log::debug!("Using cached file: {filename}");
                         return Ok(cached_file_bytes);
                     }
                     Err(e) => {
