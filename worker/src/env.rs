@@ -29,7 +29,7 @@ lazy_static! {
 
     pub static ref CACHE_DIR: String = env_var_or!("CACHE_DIR", ".cache");
 
-    pub static ref CARGO_PKG_NAME: String = env_var!("CARGO_PKG_NAME");
+    pub static ref CARGO_PKG_NAME: String = env_var_or!("CARGO_PKG_NAME", "nur_worker");
 
     pub static ref POSTGRES_URL: String = env_var!("POSTGRES_URL");
 }
