@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
@@ -13,7 +13,7 @@ pub struct HandshakeSuccess {
     /// Function uuid to run
     pub function_uuid: uuid::Uuid,
     /// .wasm module to run in bytes
-    pub wasm_bytes: Vec<u8>,
+    pub wasm_bytes: Arc<[u8]>,
 }
 
 pub async fn handle_handshake<R>(
@@ -125,8 +125,8 @@ mod tests {
             &self,
             _function_uuid: impl AsRef<Uuid>,
             _last_deployment_timestamp: u64,
-        ) -> Result<Vec<u8>, fetcher::FetchFunctionError> {
-            Ok(vec![])
+        ) -> Result<Arc<[u8]>, fetcher::FetchFunctionError> {
+            Ok(Arc::from(vec![0; 1]))
         }
     }
 

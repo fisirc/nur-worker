@@ -5,7 +5,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct FunctionFetcher {
     s3_client: aws_sdk_s3::Client,
-    memory_cache: Arc<RwLock<HashMap<Uuid, Vec<u8>>>>,
+    memory_cache: Arc<RwLock<HashMap<Uuid, Arc<[u8]>>>>,
     cache_dir: String,
 }
 
@@ -20,7 +20,7 @@ pub trait FunctionFetch {
         &self,
         function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
-    ) -> Result<Vec<u8>, FetchFunctionError>;
+    ) -> Result<Arc<[u8]>, FetchFunctionError>;
 }
 
 impl FunctionFetcher {
@@ -69,7 +69,7 @@ impl FunctionFetch for FunctionFetcher {
         &self,
         function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
-    ) -> Result<Vec<u8>, FetchFunctionError> {
+    ) -> Result<Arc<[u8]>, FetchFunctionError> {
         let function_uuid = function_uuid.as_ref();
         let filename = format!("{cache}/{function_uuid}.wasm", cache = self.cache_dir);
 
@@ -114,13 +114,13 @@ impl FunctionFetch for FunctionFetcher {
                 .await;
 
             if cached_file.is_ok() {
-                let mut cached_file_bytes = Vec::new();
+                let mut cached_file_bytes = Vec::with_capacity(128);
                 let mut cached_file = cached_file.unwrap();
 
                 match cached_file.read_to_end(&mut cached_file_bytes).await {
                     Ok(_) => {
                         log::debug!("Using cached file: {filename}");
-                        return Ok(cached_file_bytes);
+                        return Ok(Arc::from(cached_file_bytes));
                     }
                     Err(e) => {
                         log::error!(
@@ -160,13 +160,18 @@ impl FunctionFetch for FunctionFetcher {
                 return Err(FetchFunctionError::Decompression);
             }
         }
+        let wasm_bytes = Arc::from(wasm_bytes);
 
         // Save to cache
         if let Err(e) = tokio::fs::write(&filename, &wasm_bytes).await {
             log::error!("Failed to write wasm module to cache: {e}");
         }
+        {
+            let mut memory_cache = self.memory_cache.write().await;
+            memory_cache.insert(*function_uuid, wasm_bytes.clone());
+        }
 
-        Ok(wasm_bytes)
+        Ok(Arc::from(wasm_bytes))
     }
 }
 
@@ -175,7 +180,7 @@ impl FunctionFetch for &'_ FunctionFetcher {
         &self,
         function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
-    ) -> Result<Vec<u8>, FetchFunctionError> {
+    ) -> Result<Arc<[u8]>, FetchFunctionError> {
         (*self)
             .fetch(function_uuid, last_deployment_timestamp)
             .await
