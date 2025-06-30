@@ -184,7 +184,8 @@ impl Server {
                     }
                     Ok(intrinsics::NurWasmMessage::LogMessage { log }) => {
                         let logs_service = logs_service.clone();
-                        // log sending
+                        log::trace!("log_str: {log}");
+                        // Detach log sending
                         tokio::spawn(async move {
                             logs_service
                                 .send(&function_uuid, &log)
@@ -227,10 +228,6 @@ impl Server {
                     }
                     Ok(n) => {
                         log::debug!("read {n} bytes from socket {addr}");
-                        String::from_utf8_lossy(&buf[..n])
-                            .lines()
-                            .for_each(|line| log::debug!("Received line: {line}"));
-
                         if wasm_aborted.load(std::sync::atomic::Ordering::SeqCst) {
                             return;
                         }
