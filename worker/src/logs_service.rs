@@ -40,8 +40,7 @@ impl LogsService for SupabaseLogService {
             .await?;
 
         client.execute(&stmt, &[&function_uuid, &message]).await?;
-        log::debug!("LogService.send({function_uuid:?}, {message})");
-
+        log::trace!("send({function_uuid:?}, {message})");
         Ok(())
     }
 }
