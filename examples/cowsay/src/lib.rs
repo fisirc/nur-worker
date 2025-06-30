@@ -105,8 +105,11 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
             // so let's manuallly chech for the content length
             let body_start = parsed.unwrap();
 
-            // TODO: check if caps matter
-            let content_length = req.headers.iter().find(|h| h.name == "content-length");
+            let content_length = req
+                .headers
+                .iter()
+                .find(|h| h.name.to_lowercase() == "content-length");
+
             if content_length.is_none() {
                 let response = create_cowsay_response("muu! no content-length?");
                 nur_send(&response);
