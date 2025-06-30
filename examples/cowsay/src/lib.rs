@@ -47,7 +47,7 @@ fn create_cowsay_response(body: &str) -> String {
  {}
         \\   ^__^
          \\  (oo)\\_______
-            (__)\\       )\\/\\
+            (__)\\  nur  )\\/\\
                 ||----w |
                 ||     ||",
         top_border, body_text, bottom_border
@@ -67,6 +67,10 @@ Content-Length: {cowsay_len}\r
 // This will be called by wasmer
 #[unsafe(no_mangle)]
 pub extern "C" fn poll_stream(data: usize, len: usize) {
+    if data == 0 {
+        nur_end();
+    }
+
     let data: *const u8 = data as *const u8;
     let slice = unsafe { std::slice::from_raw_parts(data, len) };
 
