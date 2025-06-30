@@ -39,9 +39,9 @@ impl LogsService for SupabaseLogService {
             .prepare_cached("INSERT INTO function_logs(function_id, message) VALUES ($1, $2)")
             .await?;
 
-        let rows = client.execute(&stmt, &[&function_uuid, &message]).await?;
+        client.execute(&stmt, &[&function_uuid, &message]).await?;
+        log::debug!("LogService.send({function_uuid:?}, {message})");
 
-        println!("{rows} rows modified");
         Ok(())
     }
 }
