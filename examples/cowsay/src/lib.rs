@@ -101,6 +101,14 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
                 return;
             }
 
+            if req.method == Some("GET") {
+                // Handle GET requests
+                let response = create_cowsay_response("muu! intenta con POST!");
+                nur_send(&response);
+                nur_end();
+                return;
+            }
+
             // Request headers are sent completed, but we have no guarantees over the body,
             // so let's manuallly chech for the content length
             let body_start = parsed.unwrap();
