@@ -47,7 +47,7 @@ fn create_cowsay_response(body: &str) -> String {
  {}
         \\   ^__^
          \\  (👀 )\\_______
-            (__)\\  nur  )\\/\\
+            (__)\\       )\\/\\
                 ||----w |
                 ||     ||",
         top_border, body_text, bottom_border
@@ -68,6 +68,7 @@ Content-Length: {cowsay_len}\r
 #[unsafe(no_mangle)]
 pub extern "C" fn poll_stream(data: usize, len: usize) {
     if data == 0 {
+        nur_log("Request end forced, mu... 🐄🥛");
         nur_end();
     }
 
@@ -84,60 +85,96 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
     let mut headers = [httparse::EMPTY_HEADER; 64];
     let mut req = httparse::Request::new(&mut headers);
 
-    let parsed_result = unsafe {
-        let buffer = &*&raw const REQUEST_BUFFER;
+    let buffer: &Vec<u8>;
+    unsafe {
+        buffer = &*&raw const REQUEST_BUFFER;
+    }
 
-        match req.parse(buffer) {
-            Ok(parsed) => {
-                if parsed.is_partial() {
-                    // Still waiting for more data
-                    nur_log(&format!(
-                        "🐄 Received partial request chunk with len: {len}, total buffered: {}",
-                        buffer.len()
-                    ));
-                    return;
-                }
-                parsed
+    match req.parse(buffer) {
+        Ok(parsed) => {
+            if parsed.is_partial() {
+                // Still waiting for more data
+                nur_log(&format!(
+                    "🐄 Received partial request chunk with len: {len}, total buffered: {}",
+                    buffer.len()
+                ));
+                return;
             }
-            Err(e) => {
-                nur_log(&format!("Got invalid request, digo waa: {e}"));
-                nur_log(String::from_utf8_lossy(buffer).to_string().as_str());
+
+            // Request headers are sent completed, but we have no guarantees over the body,
+            // so let's manuallly chech for the content length
+            let body_start = parsed.unwrap();
+
+            // TODO: check if caps matter
+            let content_length = req.headers.iter().find(|h| h.name == "content-length");
+            if content_length.is_none() {
+                let response = create_cowsay_response("muu! no content-length?");
+                nur_send(&response);
                 nur_end();
                 return;
             }
-        }
-    };
 
-    unsafe {
-        let buffer = &*std::ptr::addr_of!(REQUEST_BUFFER);
-        nur_log(&format!(
-            "🐄 Received complete request with total len: {}!",
-            buffer.len()
-        ));
+            let content_length = match str::from_utf8(content_length.unwrap().value) {
+                Ok(length) => match length.trim().parse::<usize>() {
+                    Ok(len) => len,
+                    Err(_) => {
+                        let response = create_cowsay_response("muu! invalid content-length?");
+                        nur_send(&response);
+                        nur_end();
+                        return;
+                    }
+                },
+                Err(_) => {
+                    let response = create_cowsay_response("muu! invalid content-length?");
+                    nur_send(&response);
+                    nur_end();
+                    return;
+                }
+            };
 
-        // Extract the body from the request
-        let body_start = parsed_result.unwrap();
-        let body = if body_start < buffer.len() {
-            String::from_utf8_lossy(&buffer[body_start..])
+            nur_log(&format!(
+                "🐄 Received complete request with total len: {}!",
+                buffer.len()
+            ));
+
+            let mut body = &buffer[body_start..];
+            if body.len() > content_length {
+                nur_log(&format!(
+                    "🐄 Body is too long, content-length={}, body={}. Trimming to content-length...",
+                    content_length,
+                    body.len()
+                ));
+                body = &buffer[body_start..body_start + content_length];
+            }
+
+            if body.len() != content_length {
+                nur_log(&format!(
+                    "🐄 Body is not there yet, content-length={}, body={}. Waiting for more data...",
+                    content_length,
+                    body.len()
+                ));
+                return;
+            }
+
+            // We now have a complete and valid body!
+
+            let body_str = String::from_utf8_lossy(&buffer[body_start..])
                 .trim()
-                .to_string()
-        } else {
-            String::new()
-        };
+                .to_string();
 
-        nur_log(&format!("🗨️ Received cow message: {}\n", body));
+            nur_log(&format!("🗨️🐄 Received cow message: {body_str}\n"));
 
-        let response = create_cowsay_response(&body);
-        nur_send(&response);
-
-        nur_log("200 OK\n");
-
-        // Clear the buffer for the next request
-        let buffer_mut = &mut *std::ptr::addr_of_mut!(REQUEST_BUFFER);
-        buffer_mut.clear();
+            let response = create_cowsay_response(&body_str);
+            nur_send(&response);
+            nur_log("200 OK\n");
+            nur_end();
+        }
+        Err(e) => {
+            nur_log(&format!("Got invalid request, digo muu 🐄: {e}"));
+            nur_log(String::from_utf8_lossy(buffer).to_string().as_str());
+            nur_end();
+        }
     }
-
-    nur_end();
 }
 
 #[unsafe(no_mangle)]
