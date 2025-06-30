@@ -12,3 +12,10 @@ functions:
     build:
       command: cargo build --target wasm32-unknown-unknown --release
       output: /target/wasm32-unknown-unknown/release/echo_server.wasm
+
+  - name: 🐄 cowsay
+    directory: /examples/cowsay
+    template: rust
+    build:
+      command: cargo build --target wasm32-unknown-unknown --release
+      output: /target/wasm32-unknown-unknown/release/cowsay.wasm
