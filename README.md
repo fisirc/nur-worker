@@ -22,4 +22,18 @@ required artifacts and run the WASM code.
 The program outputs are sent to the Nur log collector, which makes them
 available to the programs' authors.
 
-<!-- TODO -->
+## Testing
+
+```sh
+cd worker/
+
+cargo test
+```
+
+## Running with logs enabled
+
+```sh
+cd worker/
+
+RUST_LOG=none,nur_worker=trace cargo run
+```
