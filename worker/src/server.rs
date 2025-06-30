@@ -3,6 +3,7 @@ use crate::handshake::handle_handshake;
 use crate::logs_service::{LogsService, SupabaseLogService};
 use crate::{fetcher, intrinsics};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::{io, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
@@ -67,29 +68,41 @@ impl Server {
         log::debug!("finish:handle_handshake");
 
         let function_uuid = handshake.function_uuid;
-        let wasm_bytes = handshake.wasm_bytes;
+        let fetched_func = handshake.fetched_func;
 
         let (mut socket_read_half, mut socket_write_half) = socket.into_split();
 
         log::debug!("start:wasm_module_instantiating");
         let mut store = Store::default();
-        let module = match Module::new(&store, wasm_bytes) {
-            Ok(module) => module,
-            Err(e) => {
-                log::error!("Failed to compile WebAssembly module: {e}");
-                // TODO: send error back
-                // Probably worth implementing a default handler for this kind of cases
-                return;
+        let module = if fetched_func.is_precompiled {
+            // SAFETY: We ourselves are the only responsible to precompile WASM modules.
+            // No external agent can mark a module as precompiled. See [FunctionFetcher::fetch].
+            match unsafe { Module::deserialize(&store, fetched_func.wasm_bytes.as_ref()) } {
+                Ok(module) => module,
+                Err(e) => {
+                    log::error!("Failed to deserialize WebAssembly module: {e}");
+                    // TODO: send error back. Probably worth implementing a default error handler
+                    return;
+                }
+            }
+        } else {
+            match Module::new(&store, fetched_func.wasm_bytes) {
+                Ok(module) => module,
+                Err(e) => {
+                    log::error!("Failed to compile WebAssembly module: {e}");
+                    // TODO: send error back. Probably worth implementing a default error handler
+                    return;
+                }
             }
         };
 
-        let (tx, rx) = flume::unbounded::<intrinsics::NurWasmMessage>();
+        let (msg_tx, msg_rx) = flume::unbounded::<intrinsics::NurWasmMessage>();
 
         let func_env = FunctionEnv::new(
             &mut store,
             intrinsics::NurFunctionEnv {
                 memory: None,
-                channel_tx: tx,
+                channel_tx: msg_tx,
             },
         );
 
@@ -150,11 +163,17 @@ impl Server {
 
         let mut buf = vec![0; 1024];
 
+        let wasm_aborted = Arc::new(AtomicBool::new(false));
+
+        let wasm_aborted1 = wasm_aborted.clone();
         let listen_wasm_messages_task = tokio::spawn(async move {
             loop {
-                match rx.recv_async().await {
+                match msg_rx.recv_async().await {
                     Ok(intrinsics::NurWasmMessage::Abort) => {
+                        wasm_aborted1.store(true, std::sync::atomic::Ordering::SeqCst);
                         let _ = socket_write_half.shutdown().await;
+                        // abort wasm program
+                        log::info!("Aborting connection with {addr}");
                         break;
                     }
                     Ok(intrinsics::NurWasmMessage::SendData { data }) => {
@@ -165,7 +184,7 @@ impl Server {
                     }
                     Ok(intrinsics::NurWasmMessage::LogMessage { log }) => {
                         let logs_service = logs_service.clone();
-                        // Parallelize log sending
+                        // log sending
                         tokio::spawn(async move {
                             logs_service
                                 .send(&function_uuid, &log)
@@ -187,13 +206,34 @@ impl Server {
 
         let read_socket_task = tokio::spawn(async move {
             loop {
-                let read_n = { socket_read_half.read(&mut buf).await };
-
+                let read_n = socket_read_half.read(&mut buf).await;
                 match read_n {
                     Ok(0) => {
+                        log::info!("Connection closed by peer {addr}");
+                        if wasm_aborted.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
+                        // We send an empty poll to indicate that the request has been closed
+                        match wasm_poll_stream
+                            .call(&mut store, &[wasmer::Value::I32(0), wasmer::Value::I32(0)])
+                        {
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::error!("Call error: poll_stream(0, 0): {e}");
+                                return;
+                            }
+                        };
                         break;
                     }
                     Ok(n) => {
+                        log::debug!("read {n} bytes from socket {addr}");
+                        String::from_utf8_lossy(&buf[..n])
+                            .lines()
+                            .for_each(|line| log::debug!("Received line: {line}"));
+
+                        if wasm_aborted.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
                         let ptr = match wasm_alloc.call(&mut store, &[wasmer::Value::I32(n as i32)])
                         {
                             Ok(ptr) => ptr,
@@ -226,6 +266,9 @@ impl Server {
                             }
                         };
 
+                        if wasm_aborted.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
                         match wasm_poll_stream.call(
                             &mut store,
                             &[wasmer::Value::I32(ptr_num), wasmer::Value::I32(n as i32)],
