@@ -30,6 +30,10 @@ fn nur_end() {
     }
 }
 
+// Global buffer to accumulate HTTP request data across multiple poll_stream calls
+// Safe to use static mut in WASM since it's single-threaded
+static mut REQUEST_BUFFER: Vec<u8> = Vec::new();
+
 // String accessible within the wasm linear memory
 static RESPONSE: &str = "HTTP/1.1 200 OK\r\n\
 Content-Type: application/json\r\n\
@@ -41,14 +45,20 @@ Content-Length: 29\r\n\
 #[unsafe(no_mangle)]
 pub extern "C" fn poll_stream(data: usize, len: usize) {
     let data: *const u8 = data as *const u8;
+    let slice = unsafe { std::slice::from_raw_parts(data, len) };
+
+    unsafe {
+        let buffer = &mut *&raw mut REQUEST_BUFFER;
+        buffer.extend_from_slice(slice);
+    }
+
     let mut headers = [httparse::EMPTY_HEADER; 64];
     let mut req = httparse::Request::new(&mut headers);
-
-    let slice = unsafe { std::slice::from_raw_parts(data, len) };
 
     match req.parse(slice) {
         Ok(parsed) => {
             if parsed.is_partial() {
+                nur_log("🌎 Accumulating request data of len={len}");
                 return;
             }
         }
@@ -61,7 +71,7 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
     }
 
     nur_log("Look, there is a request!\n");
-    nur_log("Let's send them some love\n");
+    nur_log("👋 Let's send them a hello\n");
 
     nur_send(RESPONSE);
     nur_end();
