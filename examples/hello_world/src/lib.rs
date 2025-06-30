@@ -33,7 +33,7 @@ fn nur_end() {
 // String accessible within the wasm linear memory
 static RESPONSE: &str = "HTTP/1.1 200 OK\r\n\
 Content-Type: application/json\r\n\
-Content-Length: 27\r\n\
+Content-Length: 29\r\n\
 \r\n\
 {\"msg\": \"Hello world, wasm!\"}";
 
