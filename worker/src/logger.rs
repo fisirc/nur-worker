@@ -40,7 +40,7 @@ pub fn build_logger() -> env_logger::Builder {
     });
 
     if std::env::var_os("RUST_LOG").is_none() {
-        builder.filter_level(log::LevelFilter::Debug);
+        builder.filter_level(log::LevelFilter::Info);
     }
 
     builder.parse_env("RUST_LOG");

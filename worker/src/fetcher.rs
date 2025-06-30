@@ -2,10 +2,15 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::{io::AsyncReadExt, sync::RwLock};
 use uuid::Uuid;
 
+pub struct CachedFunction {
+    wasm_bytes: Arc<[u8]>,
+    cached_at: u64,
+}
+
 #[derive(Clone)]
 pub struct FunctionFetcher {
     s3_client: aws_sdk_s3::Client,
-    memory_cache: Arc<RwLock<HashMap<Uuid, Arc<[u8]>>>>,
+    memory_cache: Arc<RwLock<HashMap<Uuid, CachedFunction>>>,
     cache_dir: String,
 }
 
@@ -73,16 +78,23 @@ impl FunctionFetch for FunctionFetcher {
         let function_uuid = function_uuid.as_ref();
         let filename = format!("{cache}/{function_uuid}.wasm", cache = self.cache_dir);
 
-        // Check if the function is in memory cache
+        // L1 cache: Check if the function is in memory cache
         {
             let memory_cache = self.memory_cache.read().await;
-            if let Some(cached_bytes) = memory_cache.get(function_uuid) {
-                log::debug!("Using in-memory cache for function {function_uuid}");
-                return Ok(cached_bytes.clone());
+            if let Some(cached_func) = memory_cache.get(function_uuid) {
+                if cached_func.cached_at >= last_deployment_timestamp {
+                    // If the cached function is newer than the last deployment timestamp, use it
+                    log::debug!("Using in-memory cache for function {function_uuid}");
+                    return Ok(cached_func.wasm_bytes.clone());
+                }
+
+                log::debug!("In-memory cache is outdated for function={function_uuid}");
+                // Note: Instead of removing it here, we overwrite it later
             }
         }
 
-        let mut fetch_from_local_cache = false;
+        // L2 cache: Lets see if we can use or local filesystem cache for this
+        let use_local_cache;
 
         match tokio::fs::metadata(&filename).await {
             Ok(metadata) => {
@@ -92,20 +104,29 @@ impl FunctionFetch for FunctionFetcher {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
+
+                    println!("--->{cached_timestamp}");
+
                     if last_deployment_timestamp > cached_timestamp {
-                        fetch_from_local_cache = true;
+                        log::debug!("Cached file {filename} is outdated. Fetching from network.");
+                        use_local_cache = false;
+                    } else {
+                        use_local_cache = true;
                     }
                 } else {
-                    fetch_from_local_cache = true;
+                    log::debug!("Could not get access time for {filename}. Fetching from network.");
+                    use_local_cache = true;
                 }
             }
             Err(_) => {
                 // File does not exist, so must fetch from network
-                fetch_from_local_cache = true;
+                log::debug!("Function {function_uuid} not found in cache. Fetching from network.");
+                use_local_cache = true;
             }
         };
 
-        if fetch_from_local_cache {
+        if use_local_cache {
+            log::debug!("Using local L2 cache: {filename}");
             let cached_file = tokio::fs::OpenOptions::new()
                 .create(false)
                 .read(true)
@@ -119,12 +140,17 @@ impl FunctionFetch for FunctionFetcher {
 
                 match cached_file.read_to_end(&mut cached_file_bytes).await {
                     Ok(_) => {
-                        log::debug!("Using cached file: {filename}");
+                        log::debug!("Using local L2 cache for {function_uuid}: {filename}");
                         // Store in memory cache
                         {
                             let mut memory_cache = self.memory_cache.write().await;
-                            memory_cache
-                                .insert(*function_uuid, Arc::from(cached_file_bytes.clone()));
+                            memory_cache.insert(
+                                *function_uuid,
+                                CachedFunction {
+                                    wasm_bytes: Arc::from(cached_file_bytes.clone()),
+                                    cached_at: current_unix_timestamp_s(),
+                                },
+                            );
                         }
                         return Ok(Arc::from(cached_file_bytes));
                     }
@@ -139,6 +165,7 @@ impl FunctionFetch for FunctionFetcher {
 
         let remote_filename = format!("builds/{function_uuid}.wasm.zst");
 
+        log::debug!("Fetching from S3: {remote_filename}");
         let get_result = match self
             .s3_client
             .get_object()
@@ -172,10 +199,6 @@ impl FunctionFetch for FunctionFetcher {
         if let Err(e) = tokio::fs::write(&filename, &wasm_bytes).await {
             log::error!("Failed to write wasm module to cache: {e}");
         }
-        {
-            let mut memory_cache = self.memory_cache.write().await;
-            memory_cache.insert(*function_uuid, wasm_bytes.clone());
-        }
 
         Ok(Arc::from(wasm_bytes))
     }
@@ -191,4 +214,11 @@ impl FunctionFetch for &'_ FunctionFetcher {
             .fetch(function_uuid, last_deployment_timestamp)
             .await
     }
+}
+
+fn current_unix_timestamp_s() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
