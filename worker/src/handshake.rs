@@ -1,9 +1,7 @@
-use std::{str::FromStr, sync::Arc};
-
+use crate::fetcher::{self, FetchedFunction};
+use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
-
-use crate::fetcher;
 
 const HANDSHAKE_OK: u8 = 0;
 const HANDSHAKE_MALFORMED: u8 = 1;
@@ -12,8 +10,8 @@ const HANDSHAKE_NOT_FOUND: u8 = 2;
 pub struct HandshakeSuccess {
     /// Function uuid to run
     pub function_uuid: uuid::Uuid,
-    /// .wasm module to run in bytes
-    pub wasm_bytes: Arc<[u8]>,
+    /// Fetched wasm module to run, may be precompiled
+    pub fetched_func: FetchedFunction,
 }
 
 pub async fn handle_handshake<R>(
@@ -67,7 +65,7 @@ where
     log::debug!("read last_deployment={last_deployment}");
 
     log::debug!("start:function_fetcher.fetch");
-    let wasm_bytes = match function_fetcher
+    let fetched_func = match function_fetcher
         .fetch(&function_uuid, last_deployment)
         .await
     {
@@ -86,7 +84,7 @@ where
 
     Ok(HandshakeSuccess {
         function_uuid,
-        wasm_bytes,
+        fetched_func,
     })
 }
 
@@ -114,6 +112,7 @@ fn uuid_from_be_bytes(bytes: &mut [u8; 16]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use tokio::io::DuplexStream;
 
     use super::*;
@@ -125,8 +124,8 @@ mod tests {
             &self,
             _function_uuid: impl AsRef<Uuid>,
             _last_deployment_timestamp: u64,
-        ) -> Result<Arc<[u8]>, fetcher::FetchFunctionError> {
-            Ok(Arc::from(vec![0; 1]))
+        ) -> Result<FetchedFunction, fetcher::FetchFunctionError> {
+            Ok(FetchedFunction::from_wasm(Arc::from(vec![0; 1])))
         }
     }
 
