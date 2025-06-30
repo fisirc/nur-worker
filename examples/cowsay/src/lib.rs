@@ -165,7 +165,7 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
                 .trim()
                 .to_string();
 
-            nur_log(&format!("🗨️🐄 Received cow message: {body_str}\n"));
+            nur_log(&format!("🗨️🐄 cow message: {body_str}\n"));
 
             let response = create_cowsay_response(&body_str);
             nur_send(&response);
