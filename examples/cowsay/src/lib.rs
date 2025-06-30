@@ -35,23 +35,16 @@ fn nur_end() {
 }
 
 fn create_cowsay_response(body: &str) -> String {
-    let body_text = if body.is_empty() {
-        "Hello world, wasm!"
-    } else {
-        body
-    };
+    let body_text = if body.is_empty() { "<empty>" } else { body };
+    let chars_len = body_text.chars().count();
 
-    let content_length = body_text.len();
-    let border_length = content_length + 4;
-
-    let top_border = format!(" {}", "_".repeat(border_length));
-    let bottom_border = format!(" {}", "-".repeat(border_length));
+    let top_border = "_".repeat(chars_len);
+    let bottom_border = "-".repeat(chars_len);
 
     let cowsay_art = format!(
-        "{}
+        " {}
 < {} >
-{}
- ---------------
+ {}
         \\   ^__^
          \\  (oo)\\_______
             (__)\\       )\\/\\
@@ -79,7 +72,7 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
 
     // Append new data to the global buffer
     unsafe {
-        let buffer = &mut *std::ptr::addr_of_mut!(REQUEST_BUFFER);
+        let buffer = &mut *&raw mut REQUEST_BUFFER;
         buffer.extend_from_slice(slice);
     }
 
@@ -88,7 +81,8 @@ pub extern "C" fn poll_stream(data: usize, len: usize) {
     let mut req = httparse::Request::new(&mut headers);
 
     let parsed_result = unsafe {
-        let buffer = &*std::ptr::addr_of!(REQUEST_BUFFER);
+        let buffer = &*&raw const REQUEST_BUFFER;
+
         match req.parse(buffer) {
             Ok(parsed) => {
                 if parsed.is_partial() {
