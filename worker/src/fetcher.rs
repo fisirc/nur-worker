@@ -2,15 +2,24 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::{io::AsyncReadExt, sync::RwLock};
 use uuid::Uuid;
 
-pub struct CachedFunction {
-    wasm_bytes: Arc<[u8]>,
-    cached_at: u64,
+/// Represents a fetched WASM module by a FunctionFetcher.
+/// When [is_precompiled] is false, there is no guarantee that [wasm_bytes] is valid WASM.
+///
+/// Thanks to module-level type security, we can safely assume that
+/// the [wasm_bytes] are valid, precompiled, WASM bytes when [is_precompiled] is true.
+/// This is because only the [FunctionFetcher] can mark a module as precompiled,
+#[derive(Clone, Debug)]
+pub struct FetchedFunction {
+    pub wasm_bytes: Arc<[u8]>,
+    pub is_precompiled: bool,
+    pub fetched_at: u64,
+    _private: (),
 }
 
 #[derive(Clone)]
 pub struct FunctionFetcher {
     s3_client: aws_sdk_s3::Client,
-    memory_cache: Arc<RwLock<HashMap<Uuid, CachedFunction>>>,
+    memory_cache: Arc<RwLock<HashMap<Uuid, FetchedFunction>>>,
     cache_dir: String,
 }
 
@@ -25,7 +34,7 @@ pub trait FunctionFetch {
         &self,
         function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
-    ) -> Result<Arc<[u8]>, FetchFunctionError>;
+    ) -> Result<FetchedFunction, FetchFunctionError>;
 }
 
 impl FunctionFetcher {
@@ -74,48 +83,49 @@ impl FunctionFetch for FunctionFetcher {
         &self,
         function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
-    ) -> Result<Arc<[u8]>, FetchFunctionError> {
+    ) -> Result<FetchedFunction, FetchFunctionError> {
         let function_uuid = function_uuid.as_ref();
-        let filename = format!("{cache}/{function_uuid}.wasm", cache = self.cache_dir);
+
+        // Assumptions:
+        // L1 cache may be precompiled
+        // L2 is ALWAYS precompiled
+        // S3 storage is NEVER precompiled
 
         // L1 cache: Check if the function is in memory cache
         {
             let memory_cache = self.memory_cache.read().await;
             if let Some(cached_func) = memory_cache.get(function_uuid) {
-                if cached_func.cached_at >= last_deployment_timestamp {
+                if cached_func.fetched_at >= last_deployment_timestamp {
                     // If the cached function is newer than the last deployment timestamp, use it
-                    log::debug!("Using in-memory cache for function {function_uuid}");
-                    return Ok(cached_func.wasm_bytes.clone());
+                    log::debug!("Using L1 in-memory cache for function {function_uuid}");
+                    return Ok(cached_func.clone());
                 }
 
-                log::debug!("In-memory cache is outdated for function={function_uuid}");
+                log::debug!("L1 In-memory cache is outdated for function={function_uuid}");
                 // Note: Instead of removing it here, we overwrite it later
             }
         }
 
         // L2 cache: Lets see if we can use or local filesystem cache for this
-        let use_local_cache;
+        let mut use_local_cache = false;
+        let filename = format!("{cache}/{function_uuid}.wasm.bin", cache = self.cache_dir);
 
         match tokio::fs::metadata(&filename).await {
             Ok(metadata) => {
                 // If the file is new enough, we use the cached value
-                if let Ok(access_unix) = metadata.accessed() {
+                if let Ok(access_unix) = metadata.modified() {
                     let cached_timestamp = access_unix
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
 
-                    println!("--->{cached_timestamp}");
-
-                    if last_deployment_timestamp > cached_timestamp {
-                        log::debug!("Cached file {filename} is outdated. Fetching from network.");
-                        use_local_cache = false;
-                    } else {
+                    if last_deployment_timestamp < cached_timestamp {
                         use_local_cache = true;
+                    } else {
+                        log::debug!("Cached file {filename} is outdated. Fetching from network.");
                     }
                 } else {
                     log::debug!("Could not get access time for {filename}. Fetching from network.");
-                    use_local_cache = true;
                 }
             }
             Err(_) => {
@@ -140,19 +150,15 @@ impl FunctionFetch for FunctionFetcher {
 
                 match cached_file.read_to_end(&mut cached_file_bytes).await {
                     Ok(_) => {
-                        log::debug!("Using local L2 cache for {function_uuid}: {filename}");
+                        let precompiled_func =
+                            FetchedFunction::from_precompiled_wasm(Arc::from(cached_file_bytes));
+
                         // Store in memory cache
                         {
                             let mut memory_cache = self.memory_cache.write().await;
-                            memory_cache.insert(
-                                *function_uuid,
-                                CachedFunction {
-                                    wasm_bytes: Arc::from(cached_file_bytes.clone()),
-                                    cached_at: current_unix_timestamp_s(),
-                                },
-                            );
+                            memory_cache.insert(*function_uuid, precompiled_func.clone());
                         }
-                        return Ok(Arc::from(cached_file_bytes));
+                        return Ok(precompiled_func);
                     }
                     Err(e) => {
                         log::error!(
@@ -160,12 +166,16 @@ impl FunctionFetch for FunctionFetcher {
                         );
                     }
                 }
+            } else {
+                log::debug!(
+                    "Cached file {filename} does not exist or is not readable. Fetching from network."
+                );
             }
         }
 
         let remote_filename = format!("builds/{function_uuid}.wasm.zst");
-
         log::debug!("Fetching from S3: {remote_filename}");
+
         let get_result = match self
             .s3_client
             .get_object()
@@ -193,14 +203,14 @@ impl FunctionFetch for FunctionFetcher {
                 return Err(FetchFunctionError::Decompression);
             }
         }
-        let wasm_bytes = Arc::from(wasm_bytes);
+        let precompiled_func = FetchedFunction::try_precompile(Arc::from(wasm_bytes));
 
-        // Save to cache
-        if let Err(e) = tokio::fs::write(&filename, &wasm_bytes).await {
+        // Save to L2 cache
+        if let Err(e) = tokio::fs::write(&filename, &precompiled_func.wasm_bytes).await {
             log::error!("Failed to write wasm module to cache: {e}");
         }
 
-        Ok(Arc::from(wasm_bytes))
+        Ok(precompiled_func)
     }
 }
 
@@ -209,10 +219,39 @@ impl FunctionFetch for &'_ FunctionFetcher {
         &self,
         function_uuid: impl AsRef<Uuid>,
         last_deployment_timestamp: u64,
-    ) -> Result<Arc<[u8]>, FetchFunctionError> {
+    ) -> Result<FetchedFunction, FetchFunctionError> {
         (*self)
             .fetch(function_uuid, last_deployment_timestamp)
             .await
+    }
+}
+
+impl FetchedFunction {
+    // Private, because no external code should mark arbitrary WASM modules as precompiled.
+    fn from_precompiled_wasm(wasm_bytes: Arc<[u8]>) -> Self {
+        FetchedFunction {
+            wasm_bytes,
+            is_precompiled: true,
+            fetched_at: current_unix_timestamp_s(),
+            _private: (),
+        }
+    }
+
+    pub fn from_wasm(wasm_bytes: Arc<[u8]>) -> Self {
+        FetchedFunction {
+            wasm_bytes,
+            is_precompiled: false,
+            fetched_at: current_unix_timestamp_s(),
+            _private: (),
+        }
+    }
+
+    pub fn try_precompile(wasm_bytes: Arc<[u8]>) -> Self {
+        if let Some(precompiled_bytes) = precompile_wasm_bytes(&wasm_bytes) {
+            FetchedFunction::from_precompiled_wasm(Arc::from(precompiled_bytes))
+        } else {
+            FetchedFunction::from_wasm(wasm_bytes)
+        }
     }
 }
 
@@ -221,4 +260,11 @@ fn current_unix_timestamp_s() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+fn precompile_wasm_bytes(wasm_bytes: &Arc<[u8]>) -> Option<Vec<u8>> {
+    let store = wasmer::Store::default();
+    let module = wasmer::Module::new(&store, wasm_bytes).ok()?;
+    let bytes = module.serialize().ok()?;
+    Some(bytes.to_vec())
 }
