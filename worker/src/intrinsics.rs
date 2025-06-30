@@ -13,7 +13,7 @@ pub enum NurWasmMessage {
 }
 
 pub fn nur_log(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
-    log::trace!("nur_nur_log({ptr}, {len})");
+    log::trace!("nur_log({ptr}, {len})");
     let data = env.data();
     let store = env.as_store_ref();
     let memory = data.memory.as_ref().unwrap();
@@ -32,8 +32,8 @@ pub fn nur_log(env: FunctionEnvMut<NurFunctionEnv>, ptr: i32, len: i32) {
         .send(NurWasmMessage::LogMessage {
             log: msg.to_string(),
         })
-        .unwrap_or_else(|e| {
-            log::error!("nur_log: Failed to send log message \"{msg}\" through channel: {e}");
+        .unwrap_or_else(|_| {
+            log::error!("nur_log: Message \"{msg}\" not sent. nur_send() already called.");
         });
 }
 
