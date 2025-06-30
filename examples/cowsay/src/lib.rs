@@ -35,11 +35,11 @@ fn nur_end() {
 }
 
 fn create_cowsay_response(body: &str) -> String {
-    let body_text = if body.is_empty() { "<empty>" } else { body };
+    let body_text = if body.is_empty() { "..." } else { body };
     let chars_len = body_text.chars().count();
 
-    let top_border = "_".repeat(chars_len);
-    let bottom_border = "-".repeat(chars_len);
+    let top_border = "_".repeat(chars_len + 2);
+    let bottom_border = "-".repeat(chars_len + 2);
 
     let cowsay_art = format!(
         " {}
