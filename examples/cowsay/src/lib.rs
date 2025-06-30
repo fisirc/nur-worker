@@ -46,7 +46,7 @@ fn create_cowsay_response(body: &str) -> String {
 < {} >
  {}
         \\   ^__^
-         \\  (oo)\\_______
+         \\  (👀 )\\_______
             (__)\\  nur  )\\/\\
                 ||----w |
                 ||     ||",
