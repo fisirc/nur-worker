@@ -1,5 +1,5 @@
 <h1 align="center">
-Nur worker
+Nur worker (finished)
 </h1>
 
 <p align="center">
