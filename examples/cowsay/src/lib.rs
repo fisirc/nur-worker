@@ -47,7 +47,7 @@ fn create_cowsay_response(body: &str) -> String {
  {}
         \\   ^__^
          \\  (👀 )\\_______
-            (__)\\       )\\/\\
+            (__)\\  ❤️   )\\/\\
                 ||----w |
                 ||     ||",
         top_border, body_text, bottom_border
