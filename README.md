@@ -57,6 +57,11 @@ And there are two symbols you need to export:
 - `poll_stream`, called for each TCP chunk of data that is streamed from the client.
 - `alloc`, to allocate dynamic memory for your program needs
 
+There are ready to use functions in the [examples/](./examples) folder.
+
+Nur is a code-first platform, your functions are maintained in your repo, and then
+compiled in every push. See this [GitHub Action run](https://github.com/fisirc/nur-worker/runs/45331243687) as an example
+
 This is an example of an echo server lambda written in Rust:
 
 ```rs
@@ -126,6 +131,15 @@ pub extern "C" fn alloc(len: usize) -> usize {
     let layout = std::alloc::Layout::array::<u8>(len).unwrap();
     unsafe { std::alloc::alloc(layout) as usize }
 }
+```
+
+And you need to compile this function to WASM. You can use any language
+that has WASM as a compile target!
+
+```sh
+rustup target add wasm32-unknown-unknown
+
+cargo build --target wasm32-unknown-unknown --release
 ```
 
 ## Testing
